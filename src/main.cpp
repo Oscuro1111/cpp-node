@@ -7,9 +7,13 @@
 
 void handleRoute(Request *req){
 
-
+    Queries *qrs= req->header.qrs!=NULL?req->header.qrs:(req->header.body.form!=NULL?req->header.body.form:NULL);
+    
+    if(qrs!=NULL)
+    for(int i=0;i<qrs->length;i++)
+    fprintf(stderr,"%s:%s\n",qrs->queries[i].name,qrs->queries[i].value);
+  
 	response_msg(req->clnt_sock,"cppnode: Hello");
-
 }
 
 int http_mpm_server_start(char *port, char *root_dir) {
