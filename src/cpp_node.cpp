@@ -8,12 +8,17 @@
 
 #define RESOURCE_DIR "public"
 
+extern MPM_HTTP_ERROR HTTP_ERROR_CODES;
+
+
 cpp_node::Http_Server::Http_Server(int port, char *root)
 {
 
 	int_to_str(this->port, port);
-
+	
 	memcpy(this->root_dir, root, strlen(root));
+
+	this->routes =  new cpp_node::Routes();
 }
 
 
@@ -21,8 +26,21 @@ cpp_node::Http_Server::Http_Server(int port, char *root)
 //TODO: Need to implement 
 void cpp_node::Http_Server::handleRoutes(Request *request)
 {
+	Response *response = (Response *)malloc(sizeof(Response));
 
-	response_msg(request->clnt_sock, "cppnode: Done");
+	response->sockfd =request->clnt_sock;
+
+	log_str(request->header.route_name);
+
+	cpp_node::CPP_ROUTE route = this->routes->get_route(request->header.url_path,request->header.method);
+
+	if(route==NULL) response_error(response,request,"Not Found",HTTP_ERROR_CODES.CODE_404);
+	else {	
+		route(request);
+	}
+		free(response);
+
+	log_str("End of the handlRoutes");
 }
 
 
@@ -64,18 +82,20 @@ int cpp_node::Http_Server::start()
 	return 0;
 }
 
-void cpp_node::Routes::add_route(char *name, cpp_node::CPP_ROUTE route)
+void cpp_node::Routes::add_route(cpp_node::CPP_NODE_ROUTER *router)
+{
+	if(mpm_list_add(this->routers,router)==0){
+		return;
+	}else {
+		fprintf(stderr,"unable to add router to list");
+	}
+}
+
+void cpp_node::Routes::remove_route(cpp_node::CPP_NODE_ROUTER *router)
 {
 }
 
-void cpp_node::Routes::remove_route(char *name, cpp_node::CPP_ROUTE route)
-{
-}
-
-cpp_node::CPP_ROUTE cpp_node::Routes::get_route(char *name)
-{
-}
-
+//Allocate Server instance.
 cpp_node::Http_Server *cpp_node::allocate_server(int port, char *root_dir)
 {
 	if (cpp_node::_http_server == NULL)
