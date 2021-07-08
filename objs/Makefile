@@ -15,6 +15,8 @@ OBJSDIR=.
 
 FLAGS=-fPIC -c -O2
 
+
+LIB_LINKS=-lpthread
 #-------------------------------------------------------
 SRCSFILES=$(wildcard $(SRCDIR)/*.cpp)
 
@@ -33,6 +35,6 @@ ALLSRCS:=$(SRCFILES)
 
 obj_build:all
 	@echo "::Linking object files"
-	$(GCC) -o $(BINDIR)/$(BINNAME) $(ALLOBJS) $(SHARED_LIB) $(STATIC_LIB)
+	$(GCC) $(LIB_LINKS) -o $(BINDIR)/$(BINNAME) $(ALLOBJS) $(SHARED_LIB) $(STATIC_LIB)
 	@cp -R ../libs ../bin
 

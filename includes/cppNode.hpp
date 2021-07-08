@@ -17,6 +17,7 @@ extern "C"
 #include "./mpm-includes/http_error_codes.h"
 #include "./mpm-includes/fs_c.h"
 #include "./mpm-includes/error_exit.h"
+#include "./mpm-includes/thread_poll.h"
 #ifdef __cplusplus
 }
 #endif
@@ -117,7 +118,13 @@ class Routes
     Http_Server() : port("3001"), root_dir(".")
     {
       this->routes = new Routes();
-    };
+    }
+
+    ~Http_Server(){
+        if(this->routes!=NULL){
+           delete this->routes;     
+        }
+    }
 
     Http_Server(int port, char *root_directory);
   };
