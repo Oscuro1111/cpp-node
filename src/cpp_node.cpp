@@ -2,18 +2,44 @@
 #include <string.h>
 #include <unistd.h>
 
+
 #define __IN_CPP_NODE_DEFINE__
+
 
 #include "../includes/cppNode.hpp"
 
 #define RESOURCE_DIR "public"
 
+#define MAX_NUM_WRK_THREADS 4
+
+extern MPM_HTTP_ERROR HTTP_ERROR_CODES;
+
+typedef struct __thr_arg__{
+	int clntSock;
+	char *resource_path;
+	char *root_dir;
+	void (*handle_routes)(Request *);
+}wrk_args;
+
+void thr_func(void *_arg){
+
+	wrk_args *arg = (wrk_args *)_arg;
+	
+	HandleClient(arg->clntSock, arg->resource_path, arg->root_dir, arg->handle_routes);
+	
+	close(arg->clntSock);
+
+	free(arg);
+}
+
 cpp_node::Http_Server::Http_Server(int port, char *root)
 {
 
 	int_to_str(this->port, port);
-
+	
 	memcpy(this->root_dir, root, strlen(root));
+
+	this->routes =  new cpp_node::Routes();
 }
 
 
@@ -21,8 +47,25 @@ cpp_node::Http_Server::Http_Server(int port, char *root)
 //TODO: Need to implement 
 void cpp_node::Http_Server::handleRoutes(Request *request)
 {
+	Response *response = (Response *)malloc(sizeof(Response));
 
-	response_msg(request->clnt_sock, "cppnode: Done");
+	response->sockfd =request->clnt_sock;
+	log_str("In handle routes");
+
+	if(request->header.route_name==NULL){
+		response_msg(request->clnt_sock,"Not a valid route.");
+		return;
+	}
+
+	cpp_node::CPP_ROUTE route = this->routes->get_route(request->header.url_path,request->header.method);
+
+	if(route==NULL) response_error(response,request,"Not Found",HTTP_ERROR_CODES.CODE_404);
+	else {	
+		route(request);
+	}
+		free(response);
+
+	log_str("End of the handlRoutes");
 }
 
 
@@ -50,32 +93,57 @@ int cpp_node::Http_Server::start()
 
 	int servSock = SetupTCPServerSocket(port);
 
+	worker_poll *wrk_poll = allocate_wrk_poll();
+
+	worker_poll_init(wrk_poll,MAX_NUM_WRK_THREADS);
+
+	poll_worker *wrk = NULL;
+	
+	wrk_args *arg =NULL;
+
 	// serveSock is now ready to accept connection
 	// Create an input stream from the socket
 	for (;;)
 	{
 		// Wait for client to connect
 		int clntSock = AcceptTCPConnection(servSock);
-		HandleClient(clntSock, resource_path, this->root_dir, cpp_node::handle_routes);
-		close(clntSock);
+		wrk  = get_worker_poll(wrk_poll);
+		if(wrk!=NULL){
+			arg=(wrk_args *)malloc(sizeof(wrk_args));
+			if(arg==NULL) continue;
+
+			arg->clntSock = clntSock;
+			arg->handle_routes = cpp_node::handle_routes;
+			arg->resource_path = resource_path;
+			arg->root_dir = this->root_dir;
+
+			wrk->arg =arg; 
+			wrk->name="client handler";
+			wrk->work_func = thr_func;
+
+			start_worker(wrk_poll,wrk);		}
+		//HandleClient(clntSock, resource_path, this->root_dir, cpp_node::handle_routes);
+	
 	} // Each client
 
 	free(resource_path);
 	return 0;
 }
 
-void cpp_node::Routes::add_route(char *name, cpp_node::CPP_ROUTE route)
+void cpp_node::Routes::add_route(cpp_node::CPP_NODE_ROUTER *router)
+{
+	if(mpm_list_add(this->routers,router)==0){
+		return;
+	}else {
+		fprintf(stderr,"unable to add router to list");
+	}
+}
+
+void cpp_node::Routes::remove_route(cpp_node::CPP_NODE_ROUTER *router)
 {
 }
 
-void cpp_node::Routes::remove_route(char *name, cpp_node::CPP_ROUTE route)
-{
-}
-
-cpp_node::CPP_ROUTE cpp_node::Routes::get_route(char *name)
-{
-}
-
+//Allocate Server instance.
 cpp_node::Http_Server *cpp_node::allocate_server(int port, char *root_dir)
 {
 	if (cpp_node::_http_server == NULL)
