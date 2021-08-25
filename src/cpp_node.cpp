@@ -2,14 +2,35 @@
 #include <string.h>
 #include <unistd.h>
 
+
 #define __IN_CPP_NODE_DEFINE__
+
 
 #include "../includes/cppNode.hpp"
 
 #define RESOURCE_DIR "public"
 
+#define MAX_NUM_WRK_THREADS 4
+
 extern MPM_HTTP_ERROR HTTP_ERROR_CODES;
 
+typedef struct __thr_arg__{
+	int clntSock;
+	char *resource_path;
+	char *root_dir;
+	void (*handle_routes)(Request *);
+}wrk_args;
+
+void thr_func(void *_arg){
+
+	wrk_args *arg = (wrk_args *)_arg;
+	
+	HandleClient(arg->clntSock, arg->resource_path, arg->root_dir, arg->handle_routes);
+	
+	close(arg->clntSock);
+
+	free(arg);
+}
 
 cpp_node::Http_Server::Http_Server(int port, char *root)
 {
@@ -29,8 +50,12 @@ void cpp_node::Http_Server::handleRoutes(Request *request)
 	Response *response = (Response *)malloc(sizeof(Response));
 
 	response->sockfd =request->clnt_sock;
+	log_str("In handle routes");
 
-	log_str(request->header.route_name);
+	if(request->header.route_name==NULL){
+		response_msg(request->clnt_sock,"Not a valid route.");
+		return;
+	}
 
 	cpp_node::CPP_ROUTE route = this->routes->get_route(request->header.url_path,request->header.method);
 
@@ -68,14 +93,37 @@ int cpp_node::Http_Server::start()
 
 	int servSock = SetupTCPServerSocket(port);
 
+	worker_poll *wrk_poll = allocate_wrk_poll();
+
+	worker_poll_init(wrk_poll,MAX_NUM_WRK_THREADS);
+
+	poll_worker *wrk = NULL;
+	
+	wrk_args *arg =NULL;
+
 	// serveSock is now ready to accept connection
 	// Create an input stream from the socket
 	for (;;)
 	{
 		// Wait for client to connect
 		int clntSock = AcceptTCPConnection(servSock);
-		HandleClient(clntSock, resource_path, this->root_dir, cpp_node::handle_routes);
-		close(clntSock);
+		wrk  = get_worker_poll(wrk_poll);
+		if(wrk!=NULL){
+			arg=(wrk_args *)malloc(sizeof(wrk_args));
+			if(arg==NULL) continue;
+
+			arg->clntSock = clntSock;
+			arg->handle_routes = cpp_node::handle_routes;
+			arg->resource_path = resource_path;
+			arg->root_dir = this->root_dir;
+
+			wrk->arg =arg; 
+			wrk->name="client handler";
+			wrk->work_func = thr_func;
+
+			start_worker(wrk_poll,wrk);		}
+		//HandleClient(clntSock, resource_path, this->root_dir, cpp_node::handle_routes);
+	
 	} // Each client
 
 	free(resource_path);
