@@ -21,6 +21,7 @@ typedef struct __thr_arg__{
 	void (*handle_routes)(Request *);
 }wrk_args;
 
+//function called by threads worker
 void thr_func(void *_arg){
 
 	wrk_args *arg = (wrk_args *)_arg;
@@ -43,24 +44,30 @@ cpp_node::Http_Server::Http_Server(int port, char *root)
 }
 
 
-//handle routes
-//TODO: Need to implement 
 void cpp_node::Http_Server::handleRoutes(Request *request)
 {
 	Response *response = (Response *)malloc(sizeof(Response));
 
-	response->sockfd =request->clnt_sock;
-	log_str("In handle routes");
-
-	if(request->header.route_name==NULL){
-		response_msg(request->clnt_sock,"Not a valid route.");
+	if(response==NULL){
+		std::cout<<"Unableto allcoate memory for response"<<std::endl;
 		return;
 	}
 
+	response->sockfd =request->clnt_sock;
+
+	if(request->header.route_name==NULL){
+		response_msg(request->clnt_sock,"Not a valid route.");
+		free(response);
+		return;
+	}
+	if(request->header.file_name!=NULL){
+		return;
+	}
 	cpp_node::CPP_ROUTE route = this->routes->get_route(request->header.url_path,request->header.method);
 
 	if(route==NULL) response_error(response,request,"Not Found",HTTP_ERROR_CODES.CODE_404);
-	else {	
+	else {
+		//Execute handler attached to this route	
 		route(request);
 	}
 		free(response);
@@ -109,6 +116,7 @@ int cpp_node::Http_Server::start()
 		int clntSock = AcceptTCPConnection(servSock);
 		wrk  = get_worker_poll(wrk_poll);
 		if(wrk!=NULL){
+			
 			arg=(wrk_args *)malloc(sizeof(wrk_args));
 			if(arg==NULL) continue;
 
@@ -122,11 +130,14 @@ int cpp_node::Http_Server::start()
 			wrk->work_func = thr_func;
 
 			start_worker(wrk_poll,wrk);		}
-		//HandleClient(clntSock, resource_path, this->root_dir, cpp_node::handle_routes);
 	
 	} // Each client
 
 	free(resource_path);
+	
+	if(wrk_poll!=NULL)
+	wrk_poll_free(wrk_poll);
+
 	return 0;
 }
 

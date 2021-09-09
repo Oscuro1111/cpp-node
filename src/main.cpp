@@ -5,7 +5,26 @@
 
 void home_route(Request *req)
 {
-	response_msg(req->clnt_sock,"Home route");
+  Response *_response = (Response *)malloc(sizeof(Response));
+
+  char *body = "<h1>Cookies are set.</h2>";
+  char len[16];
+
+  _response->sockfd = req->clnt_sock;
+
+  int_to_str(len,strlen(body));
+  
+  set_responseHeader(_response,CONTENT_TYPE,"text/html");
+  set_responseHeader(_response,COOKIES,"mpm_key=123;");
+  set_responseHeader(_response,CONTENT_LENGTH,len);
+  set_responseHeader(_response,CONNECTION,"close");
+  set_responseHeader(_response,STATUS,"200");
+  set_responseHeader(_response,ACCEPT_RANGES,"bytes");
+
+
+  response(_response,body,strlen(body),sizeof(char));
+
+  free(_response);
 }
 
 int main(int argc, char **argv){
