@@ -133,6 +133,7 @@ int cpp_node::Http_Server::start()
 	
 	} // Each client
 
+	if(resource_path!=NULL)
 	free(resource_path);
 	
 	if(wrk_poll!=NULL)
